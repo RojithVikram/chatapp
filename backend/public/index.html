@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>ChatApp — Rooms & DMs</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+
+  <style>
+    /* ----- Base & layout ----- */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#f5f7fb; color:#0f172a; }
+
+    .wrap {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ----- Sidebar ----- */
+    .side {
+      background: linear-gradient(180deg, #0b1220 0%, #0e1424 100%);
+      color:#e5e7eb;
+      padding:18px;
+      display:flex; flex-direction:column; gap:14px;
+      border-right: 1px solid #0F172A;
+      overflow-y: auto;
+    }
+    .brand {
+      display:flex; align-items:center; gap:10px; margin-bottom:6px;
+    }
+    .logo {
+      width:32px; height:32px; border-radius:10px;
+      background: linear-gradient(135deg,#22d3ee,#4ade80);
+      box-shadow: 0 6px 18px rgba(34,211,238,.35);
+    }
+    .brand h1 { font-size:16px; margin:0; color:#fff; letter-spacing:.3px; }
+    .sectionTitle { font-size:12px; letter-spacing:.08em; color:#9ca3af; text-transform:uppercase; margin:10px 0 6px; }
+
+    /* ----- Cards ----- */
+    .card {
+      background:#ffffff;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      padding:12px;
+      box-shadow: 0 6px 20px rgba(2,6,23,.06);
+    }
+    .card.dark {
+      background:#0b1220; border-color:#111827; color:#e5e7eb;
+    }
+
+    /* ----- Main column ----- */
+    .main { padding:18px; display:flex; flex-direction:column; gap:12px; overflow:hidden; }
+    .panel { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+
+    /* ----- Messages list ----- */
+    #messages {
+      flex: 1 1 auto; min-height: 0; overflow-y:auto;
+      display:flex; flex-direction:column; gap:10px;
+      padding:10px;
+      background:#f9fafb; border:1px solid #e5e7eb; border-radius:14px;
+    }
+    .bubble {
+      max-width: 70%;
+      padding:10px 12px;
+      border-radius:14px;
+      background:#ffffff;
+      border:1px solid #e5e7eb;
+      box-shadow: 0 4px 12px rgba(2,6,23,.05);
+      display:flex; flex-direction:column; gap:6px;
+    }
+    .me { margin-left:auto; background:#d1fae5; border-color:#a7f3d0; }
+    .dm { outline:2px dashed #f59e0b; background:#fffbeb; }
+
+    .meta {
+      font-size:12px; color:#64748b; display:flex; align-items:center; gap:8px;
+    }
+    .text { font-size:14px; color:#0f172a; word-wrap: break-word; }
+
+    .sys { font-size:12px; color:#6b7280; text-align:center; }
+
+    /* ----- Composer ----- */
+    .composer { display:flex; gap:10px; flex-wrap:wrap; }
+    .composer input, .composer button, .row input, .row select, .row button {
+      padding:10px; border:1px solid #d1d5db; border-radius:10px; font-size:14px;
+    }
+    #messageInput { flex: 1 1 260px; }
+    button { cursor:pointer; background:#0ea5e9; color:#fff; border:none; box-shadow: 0 4px 10px rgba(14,165,233,.25); }
+    button:hover { filter: brightness(0.97); }
+    .btnGhost { background:#111827; color:#fff; border:1px solid #1f2937; box-shadow:none; }
+    .btnSubtle { background:#10b981; }
+
+    .row { display:flex; gap:8px; flex-wrap: wrap; }
+    .pill { background:#111827; color:#fff; padding:6px 10px; border-radius:999px; display:inline-block; font-size:12px; margin-right:6px; }
+
+    /* ----- Online users ----- */
+    .userRow {
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      padding:8px; border-radius:10px; background:#111827; margin-bottom:6px;
+    }
+    .left { display:flex; align-items:center; gap:10px; }
+    .avatar { width:28px; height:28px; border-radius:999px; background:#1f2937; color:#d1fae5; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }
+    .uid { color:#93c5fd; font-size:11px; }
+    .copy { font-size:12px; padding:6px 8px; background:#0b1220; border:1px solid #1f2937; }
+
+    .danger { color:#ef4444; }
+
+    /* ----- Responsive ----- */
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; height:auto; min-height:100vh; }
+      #messages { height: 50vh; flex: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <aside class="side">
+      <div class="brand">
+        <div class="logo"></div>
+        <h1>ChatApp</h1>
+      </div>
+
+      <div>
+        <div class="sectionTitle">Auth</div>
+        <div class="card dark">
+          <div class="row">
+            <input id="username" placeholder="username" />
+            <input id="email" placeholder="email" />
+          </div>
+          <div class="row" style="margin-top:8px;">
+            <input id="password" type="password" placeholder="password" />
+            <button id="btnRegister" class="btnSubtle">Sign up</button>
+            <button id="btnLogin" class="btnGhost">Login</button>
+          </div>
+          <div id="authStatus" style="margin-top:8px; font-size:12px; color:#a7f3d0;"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sectionTitle">Rooms</div>
+        <div class="card dark">
+          <div class="row">
+            <select id="roomSelect">
+              <option value="general">general</option>
+              <option value="tech">tech</option>
+              <option value="random">random</option>
+            </select>
+            <button id="btnJoinRoom" class="btnGhost">Join</button>
+          </div>
+          <div id="currentRoom" style="margin-top:8px;">
+            <span class="pill">room: general</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sectionTitle">Online Users <span id="userCount" style="color:#a7f3d0;"></span></div>
+        <div id="users" class="card dark"></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="panel">
+        <div class="pill" id="meBadge" style="background:#0ea5e9;">Not logged in</div>
+        <div id="typing" class="sys"></div>
+      </div>
+
+      <div id="messages"></div>
+
+      <div class="composer">
+        <input id="messageInput" placeholder="Type a message…" />
+        <button id="btnSend">Send</button>
+        <input id="dmUserId" placeholder="DM userId (optional)" style="width:220px;" />
+        <button id="btnSendDM" class="btnSubtle">Send DM</button>
+      </div>
+
+      <div class="sys">Tip: choose a room, or enter a userId to DM. Typing indicators show for the active room or active DM.</div>
+    </main>
+  </div>
+
+  <script>
+    const API = "http://localhost:5000";
+    let token = localStorage.getItem("token") || "";
+    let me = JSON.parse(localStorage.getItem("me") || "null");
+    let currentRoom = "general";
+    let socket = null;
+
+    const el = (id) => document.getElementById(id);
+    const authStatus = el("authStatus");
+    const messages = el("messages");
+    const typing = el("typing");
+    const usersBox = el("users");
+    const userCount = el("userCount");
+    const meBadge = el("meBadge");
+
+    /* --------- helpers --------- */
+    function initials(name = "?") {
+      return name.trim().split(/\s+/).slice(0,2).map(s => s[0] || "").join("").toUpperCase() || "?";
+    }
+    function formatTime(input) {
+      const d = input ? new Date(input) : new Date();
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    function autoscroll() {
+      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+    }
+
+    /* --------- UI renderers --------- */
+    function showMsg(msg, isDM = false) {
+      // backend can supply createdAt or time
+      const when = msg.createdAt || msg.time || Date.now();
+      const mine = me && msg.fromUserId === me.id;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble" + (mine ? " me" : "") + (isDM ? " dm" : "");
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.innerHTML = `<strong>${msg.fromUsername || "System"}</strong> • <span>${formatTime(when)}</span>`;
+
+      const text = document.createElement("div");
+      text.className = "text";
+      text.textContent = msg.text;
+
+      bubble.appendChild(meta);
+      bubble.appendChild(text);
+      messages.appendChild(bubble);
+      autoscroll();
+    }
+
+    function sys(text) {
+      const div = document.createElement("div");
+      div.className = "sys";
+      div.textContent = text;
+      messages.appendChild(div);
+      autoscroll();
+    }
+
+    function renderUsers(list) {
+      usersBox.innerHTML = "";
+      userCount.textContent = `(${list.length})`;
+      list.forEach(u => {
+        const row = document.createElement("div");
+        row.className = "userRow";
+
+        const left = document.createElement("div");
+        left.className = "left";
+        const av = document.createElement("div");
+        av.className = "avatar";
+        av.textContent = initials(u.username);
+        const name = document.createElement("div");
+        name.innerHTML = `<div style="font-weight:600;">${u.username}</div><div class="uid">${u.id}</div>`;
+        left.appendChild(av); left.appendChild(name);
+
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy";
+        copyBtn.textContent = "Copy ID";
+        copyBtn.onclick = () => {
+          navigator.clipboard.writeText(u.id);
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => (copyBtn.textContent = "Copy ID"), 1000);
+        };
+
+        row.appendChild(left);
+        row.appendChild(copyBtn);
+        usersBox.appendChild(row);
+      });
+    }
+
+    /* --------- auth --------- */
+    async function register() {
+      const username = el("username").value.trim();
+      const email = el("email").value.trim();
+      const password = el("password").value;
+      const res = await fetch(API + "/auth/signup", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ username, email, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok){
+        authStatus.textContent = data.message || "Sign up error";
+        authStatus.className = "danger";
+        return;
+      }
+      authStatus.textContent = "Registered. Now login.";
+      authStatus.className = "";
+    }
+
+    async function login() {
+      const email = el("email").value.trim();
+      const password = el("password").value;
+      const res = await fetch(API + "/auth/login", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok){
+        authStatus.textContent = data.message || "Login error";
+        authStatus.className = "danger";
+        return;
+      }
+      token = data.token;
+      const payload = JSON.parse(atob(token.split(".")[1] || ""));
+      me = { id: payload.id, username: payload.username };
+      localStorage.setItem("token", token);
+      localStorage.setItem("me", JSON.stringify(me));
+      authStatus.textContent = `Logged in as ${me.username}`;
+      meBadge.textContent = `You: ${me.username}`;
+      connectSocket();
+    }
+
+    /* --------- sockets --------- */
+    function connectSocket() {
+      if(!token) return;
+      if(socket) socket.disconnect();
+
+      socket = io(API, { auth:{ token } });
+
+      socket.on("connect", () => sys("Connected to server"));
+
+      socket.on("chatHistory", (list) => {
+        messages.innerHTML = "";
+        list.forEach(m => showMsg(m, !!m.toUserId)); // DM bubbles if toUserId exists
+      });
+
+      socket.on("receiveMessage", (m) => showMsg(m, !!m.toUserId));
+      socket.on("privateMessage", (m) => showMsg(m, true));
+
+      socket.on("typing", ({ username, isTyping }) => {
+        typing.textContent = isTyping ? `${username} is typing…` : "";
+      });
+
+      socket.on("typingDM", ({ fromUsername, isTyping }) => {
+        typing.textContent = isTyping ? `(DM) ${fromUsername} is typing…` : "";
+      });
+
+      socket.on("onlineUsers", renderUsers);
+    }
+
+    /* --------- UI hooks --------- */
+    document.getElementById("btnRegister").onclick = register;
+    document.getElementById("btnLogin").onclick = login;
+
+    document.getElementById("btnJoinRoom").onclick = () => {
+      const room = document.getElementById("roomSelect").value;
+      currentRoom = room;
+      document.getElementById("currentRoom").innerHTML = `<span class="pill">room: ${room}</span>`;
+      socket?.emit("joinRoom", { room });
+      typing.textContent = "";
+      sys(`Switched to room: ${room}`);
+    };
+
+    document.getElementById("btnSend").onclick = () => {
+      const input = document.getElementById("messageInput");
+      const text = input.value.trim();
+      if(!text || !socket) return;
+      socket.emit("sendMessage", { text, room: currentRoom });
+      input.value = "";
+      socket.emit("typing", { room: currentRoom, isTyping: false });
+    };
+
+    document.getElementById("messageInput").addEventListener("input", () => {
+      if(!socket) return;
+      const text = document.getElementById("messageInput").value;
+      socket.emit("typing", { room: currentRoom, isTyping: text.length>0 });
+    });
+
+    document.getElementById("btnSendDM").onclick = () => {
+      const toUserId = document.getElementById("dmUserId").value.trim();
+      const text = document.getElementById("messageInput").value.trim();
+      if(!toUserId || !text || !socket) return;
+      socket.emit("privateMessage", { toUserId, text });
+      document.getElementById("messageInput").value = "";
+      socket.emit("typingDM", { toUserId, isTyping: false });
+    };
+
+    // Restore previous login badge if any
+    if (me?.username) {
+      meBadge.textContent = `You: ${me.username}`;
+    }
+  </script>
+</body>
+</html>
